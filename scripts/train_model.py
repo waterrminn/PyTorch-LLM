@@ -6,7 +6,7 @@ from transformers import AutoTokenizer
 import torch
 
 # Append Path to Custom Modules if Needed
-# sys.path.append('./')
+# sys.pah.append('./')
 
 # Custom Modules
 from src.utils import (seed_everything,
