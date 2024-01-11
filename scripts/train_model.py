@@ -23,11 +23,12 @@ from src.dataloading.load_datasets import (CustomTextCollator,
 from src.training.single_fold import train_fold
 
 # Seed Everything, set seed for reproduction
-#
+SEED = 42
+seed_everything(seed=SEED)
 #
 
 # Get Device type for processing, if cuda is available use cuda, otherwise use cpu
-#DEVICE = 
+DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu') 
 
 
 def workflow():
@@ -37,19 +38,19 @@ def workflow():
 
     # Load Data from Disk
     load_data_file = #(base_dir=CFG.paths.data.base_dir)
-    #if
-    #    filename=CFG.paths.data.debug_data
+    if CFG.debug:
+      data = load_data_file.load(filename=CFG.paths.data.debug_data)
     else:
-    #    filename=CFG.paths.data.data
+      data = load_data_file.load(filename=CFG.paths.data.data)
 
     # Stratify the Data, the act of sorting data distinct groups or layers.
-    data = (#(technique=CFG.stratify.technique,
+    data = (StratifyData(technique=CFG.stratify.technique,
                          n_folds=CFG.cv.num_folds,
                          target=CFG.data_info.target)
             .stratify(df=data))
 
     # Train a model for each validation fold
-    for # in CFG.cv.val_folds:
+    for fold_num in CFG.cv.val_folds:
 
 
         print((f'''
@@ -61,7 +62,7 @@ def workflow():
         # Split Data into Training and Validation
         # https://www.youtube.com/watch?v=zVDDITt4XEA
         # (maybe for cross-validation) copy data if data.fold is not same with fold_num and reset index with drop=True
-        df_train = #
+        df_train = data.copy()[data.fold != fold_num].reset_index(drop=True)
         df_val = data.copy()[data.fold == fold_num].reset_index(drop=True)
         print(f'Train Number of Instances: {len(df_train):,}')
         print(f'Validation Number of Instances: {len(df_val):,}')
@@ -71,36 +72,36 @@ def workflow():
         for technique in CFG.preprocessing.apply_techniques:
             fields = getattr(CFG.preprocessing, technique).fields
             for col in fields:
-                enc = PreprocessData(y=#,
+                enc = PreprocessData(y=df_train[col].values,
                                      technique=technique)
                 encoders[col] = {'encoder': enc.encoder,
                                 'technique': technique}
 
         # Path to the model and tokenizer model card saved on disk
         # Concatenate model_tokenizer.base_dir with model_tokneizer.name
-        model_path = Path(CFG.model_tokenizer.base_dir) / #
+        model_path = Path(CFG.model_tokenizer.base_dir) / CFG.model_tokenizer.name
 
-        # Load the #
-        # = AutoTokenizer.from_pretrained(model_path, do_lower=True)
+        # Load the tokenizer
+        # tokenizer = AutoTokenizer.from_pretrained(model_path, do_lower=True)
 
         # Load #
-        # = CustomTextCollator(tokenizer=tokenizer,
+        # collator = CustomTextCollator(tokenizer=tokenizer,
                                       tokenizer_cfg=CFG.tokenizer)
 
         # Train Dataset and Dataloader
         (_,
-        train_dataloader) = get_ds_dl(df=#,
-                                      cfg=#,
-                                      tokenizer=#,
-                                      encoder=#,
-                                      collator=#)
+        train_dataloader) = get_ds_dl(df=df_train,
+                                      cfg=CFG,
+                                      tokenizer=tokenizer,
+                                      encoder=encoders[CFG.data_info.target]['encoder'],
+                                      collator=collator)
         # Validation Dataset and Dataloader
         (_,
-        val_dataloader) = get_ds_dl(df=#,
-                                    cfg=#,
-                                    tokenizer=#,
-                                    encoder=#,
-                                    collator=#)
+        val_dataloader) = get_ds_dl(df=df_val,
+                                    cfg=CFG,
+                                    tokenizer=tokenizer,
+                                    encoder=encoders[CFG.data_info.target]['encoder'],
+                                    collator=collator)
 
         print(f'# of Training Samples: {len(df_train):,}')
         print(f'# of Validation Samples: {len(df_val):,}')
@@ -113,12 +114,12 @@ def workflow():
         model_save_path = getattr(run_ids.folds_id, f'fold{fold_num}').path
 
         # Training for a single fold
-        perf_metrics = train_fold(train_dl=#,
-                                  val_dl=#,
-                                  cfg=#,
-                                  device=#,
-                                  n_classes=#,
-                                  model_save_path=#)
+        perf_metrics = train_fold(train_dl=train_dataloader,
+                                  val_dl=val_dataloader,
+                                  cfg=CFG,
+                                  device=DEVICE,
+                                  n_classes=df_train[CFG.data_into.target].nunique(),
+                                  model_save_path=model_save_path)
 
         # Save plots of performance metrics to disk for visual assessment
         if CFG.paths.save_results.apply_metric:
@@ -143,11 +144,11 @@ if __name__ == '__main__':
 
     # Determine if running in debug mode
     # If in debug manually point to CFG file
-    is_debugger = #debugger_is_active()
+    is_debugger = debugger_is_active()
 
     # Construct the argument parser and parse the arguments
     if is_debugger:
-        args = #
+        args = argparse.Namespace()
         args.dir = './cfgs'
         args.name = 'train-1-debug.yaml'
     else:
@@ -170,16 +171,16 @@ if __name__ == '__main__':
                    filename=args.name)
 
     # Create directories for saving results and use unique Group ID
-    run_ids = RunIDs(test_folds=#,
-                     num_folds=#,
-                     save_dir=#,
-                     save_results=#)
+    run_ids = RunIDs(test_folds=CFG.cv.val_folds,
+                     num_folds=CFG.cv.num_folds,
+                     save_dir=CFG.paths.save_results.base_dir,
+                     save_results=CFG.paths.save_results.apply_metric)
 
-    #generate run ids
-    #
+   #generate run ids
+    run_ids.generate_run_ids()
   
     # Start the training workflow
-    #
+    workflow()
 
     print('PYTHON SCRIPT COMPLETED - END')
     
